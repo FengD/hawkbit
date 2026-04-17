@@ -1,0 +1,31 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: #f5f0ff;
+  color: #2f1f4f;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(circle at top right, rgba(253, 185, 39, 0.2), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(85, 37, 131, 0.16), transparent 35%),
+    #f7f3ff;
+  color: #2f1f4f;
+}
+
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(circle at top right, rgba(253, 185, 39, 0.18), transparent 25%),
+    radial-gradient(circle at bottom left, rgba(129, 79, 197, 0.25), transparent 35%),
+    #140b24;
+  color: #f5e6a8;
+}
