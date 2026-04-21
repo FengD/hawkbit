@@ -1,5 +1,6 @@
-import { Button, Card, Input, Space, Table, Typography, notification } from 'antd';
+import { Button, Card, Checkbox, Input, Space, Table, Tooltip, Typography, notification } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
@@ -8,7 +9,13 @@ import { toErrorMessage } from '../utils/normalize';
 interface ConfigRow {
   key: string;
   value: string;
+  isBoolean: boolean;
 }
+
+const isBooleanValue = (value: string): boolean => {
+  const lower = value.toLowerCase();
+  return lower === 'true' || lower === 'false';
+};
 
 export const ConfigPage = () => {
   const { t } = useTranslation();
@@ -20,7 +27,10 @@ export const ConfigPage = () => {
     setLoading(true);
     try {
       const result = await managementApi.listTenantConfigs();
-      const mapped = Object.entries(result).map(([key, entry]) => ({ key, value: String(entry?.value ?? '') }));
+      const mapped = Object.entries(result).map(([key, entry]) => {
+        const value = String(entry?.value ?? '');
+        return { key, value, isBoolean: isBooleanValue(value) };
+      });
       setRows(mapped);
       setDirty({});
     } catch (error) {
@@ -40,14 +50,31 @@ export const ConfigPage = () => {
       {
         title: t('common.value'),
         dataIndex: 'value',
-        render: (_, row) => (
-          <Input
-            value={dirty[row.key] ?? row.value}
-            onChange={(event) => {
-              setDirty((current) => ({ ...current, [row.key]: event.target.value }));
-            }}
-          />
-        ),
+        render: (_, row) => {
+          const currentValue = dirty[row.key] ?? row.value;
+
+          if (row.isBoolean) {
+            return (
+              <Checkbox
+                checked={currentValue.toLowerCase() === 'true'}
+                onChange={(event) => {
+                  setDirty((current) => ({ ...current, [row.key]: String(event.target.checked) }));
+                }}
+              >
+                {currentValue.toLowerCase() === 'true' ? t('common.yes') : t('common.no')}
+              </Checkbox>
+            );
+          }
+
+          return (
+            <Input
+              value={currentValue}
+              onChange={(event) => {
+                setDirty((current) => ({ ...current, [row.key]: event.target.value }));
+              }}
+            />
+          );
+        },
       },
     ],
     [dirty, t],
@@ -57,22 +84,25 @@ export const ConfigPage = () => {
     <Card title={<Typography.Title level={4}>{t('page.config.title')}</Typography.Title>}>
       <Space direction="vertical" style={{ width: '100%' }}>
         <Space>
-          <Button onClick={() => void reload()}>{t('common.refresh')}</Button>
-          <Button
-            type="primary"
-            disabled={Object.keys(dirty).length === 0}
-            onClick={async () => {
-              try {
-                await Promise.all(Object.entries(dirty).map(([key, value]) => managementApi.updateTenantConfig(key, value)));
-                notification.success({ message: t('common.updated') });
-                await reload();
-              } catch (error) {
-                notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
-              }
-            }}
-          >
-            {t('common.save')}
-          </Button>
+          <Tooltip title={t('common.refresh')}>
+            <Button icon={<ReloadOutlined />} onClick={() => void reload()} />
+          </Tooltip>
+          <Tooltip title={t('common.save')}>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              disabled={Object.keys(dirty).length === 0}
+              onClick={async () => {
+                try {
+                  await Promise.all(Object.entries(dirty).map(([key, value]) => managementApi.updateTenantConfig(key, value)));
+                  notification.success({ message: t('common.updated') });
+                  await reload();
+                } catch (error) {
+                  notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+                }
+              }}
+            />
+          </Tooltip>
         </Space>
 
         <Table

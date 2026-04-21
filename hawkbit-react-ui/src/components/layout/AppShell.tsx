@@ -19,7 +19,6 @@ export const AppShell = () => {
 
   const items = useMemo(
     () => [
-      { key: '/about', label: <Link to="/about">{t('app.about')}</Link>, visible: true },
       { key: '/targets', label: <Link to="/targets">{t('nav.targets')}</Link>, visible: permissions?.targets ?? true },
       { key: '/target-groups', label: <Link to="/target-groups">{t('nav.targetGroups')}</Link>, visible: permissions?.targets ?? true },
       {
@@ -39,6 +38,7 @@ export const AppShell = () => {
         visible: permissions?.softwareModules ?? true,
       },
       { key: '/config', label: <Link to="/config">{t('nav.config')}</Link>, visible: permissions?.config ?? true },
+      { key: '/about', label: <Link to="/about">{t('app.about')}</Link>, visible: true },
     ].filter((item) => item.visible),
     [permissions, t],
   );

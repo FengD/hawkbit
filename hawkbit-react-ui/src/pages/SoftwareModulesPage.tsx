@@ -1,6 +1,14 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Upload, notification } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import { useEffect, useState } from 'react';
+import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Table, Upload, Tooltip, notification } from 'antd';
+import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
+import {
+  DeleteOutlined,
+  EditOutlined,
+  FileOutlined,
+  PlusOutlined,
+  SyncOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
 import type { HawkbitEntity } from '../types/api';
@@ -9,21 +17,44 @@ import { toErrorMessage } from '../utils/normalize';
 export const SoftwareModulesPage = () => {
   const { t } = useTranslation();
   const [rows, setRows] = useState<HawkbitEntity[]>([]);
+  const [total, setTotal] = useState(0);
   const [types, setTypes] = useState<HawkbitEntity[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string | number>>([]);
   const [editingOpen, setEditingOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HawkbitEntity | null>(null);
+  const [filterType, setFilterType] = useState<string | undefined>();
+  const [searchName, setSearchName] = useState('');
+  const [sortField, setSortField] = useState<string>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [form] = Form.useForm();
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const filters: string[] = [];
+      if (filterType) {
+        // RSQL format: type.key==TYPE_KEY
+        filters.push(`type.key==${filterType}`);
+      }
+      if (searchName) {
+        // RSQL format: name==*value* for wildcard matching
+        filters.push(`name==*${searchName}*`);
+      }
+
       const [listResponse, typeResponse] = await Promise.all([
-        managementApi.listSoftwareModules({ offset: 0, limit: 200, sort: 'name:asc' }),
+        managementApi.listSoftwareModules({
+          offset: (page - 1) * pageSize,
+          limit: pageSize,
+          sort: `${sortField}:${sortOrder}`,
+          q: filters.length > 0 ? filters.join(';') : undefined,
+        }),
         managementApi.listSoftwareModuleTypes(),
       ]);
       setRows(listResponse.items);
+      setTotal(listResponse.total);
       setTypes(typeResponse);
       setSelectedRowKeys([]);
     } catch (error) {
@@ -35,67 +66,113 @@ export const SoftwareModulesPage = () => {
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [page, pageSize, filterType, searchName, sortOrder, sortField]);
 
   const selectedRows = rows.filter((row) => selectedRowKeys.includes(String(row.id)));
 
+  const handleTableChange = (
+    pagination: TablePaginationConfig,
+    _filters: Record<string, (string | number)[] | null>,
+    sorter: {
+      field?: string;
+      order?: 'ascend' | 'descend';
+    } | any,
+  ) => {
+    if (pagination.current !== page) {
+      setPage(pagination.current || 1);
+    }
+    if (pagination.pageSize !== pageSize) {
+      setPageSize(pagination.pageSize || 20);
+      setPage(1);
+    }
+    if (sorter?.field && sorter?.order) {
+      setSortField(sorter.field);
+      setSortOrder(sorter.order === 'ascend' ? 'asc' : 'desc');
+    }
+  };
+
   const columns: ColumnsType<HawkbitEntity> = [
-    { title: t('table.id'), dataIndex: 'id' },
-    { title: t('table.name'), dataIndex: 'name' },
-    { title: t('table.version'), dataIndex: 'version' },
-    { title: t('table.type'), dataIndex: 'typeName' },
-    { title: t('table.vendor'), dataIndex: 'vendor' },
+    {
+      title: t('table.id'),
+      dataIndex: 'id',
+      sorter: true,
+      sortOrder: sortField === 'id' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null,
+    },
+    {
+      title: t('table.name'),
+      dataIndex: 'name',
+      sorter: true,
+      sortOrder: sortField === 'name' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null,
+    },
+    {
+      title: t('table.version'),
+      dataIndex: 'version',
+      sorter: true,
+      sortOrder: sortField === 'version' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null,
+    },
+    {
+      title: t('table.type'),
+      dataIndex: 'typeName',
+      sorter: false,
+    },
+    {
+      title: t('table.vendor'),
+      dataIndex: 'vendor',
+      sorter: false,
+    },
     {
       title: t('common.actions'),
       render: (_, record) => (
         <Space>
-          <Button
-            size="small"
-            onClick={() => {
-              setEditingItem(record);
-              form.setFieldsValue({
-                type: String(record.type ?? ''),
-                name: record.name,
-                version: record.version,
-                vendor: record.vendor,
-                description: record.description,
-                encrypted: Boolean(record.encrypted),
-              });
-              setEditingOpen(true);
-            }}
-          >
-            {t('common.edit')}
-          </Button>
-          <Button
-            size="small"
-            onClick={async () => {
-              try {
-                const artifacts = await managementApi.getSoftwareModuleArtifacts(String(record.id));
-                Modal.info({
-                  width: 900,
-                  title: t('softwareModules.artifacts'),
-                  content: (
-                    <Table<HawkbitEntity>
-                      rowKey={(row) => String(row.id)}
-                      size="small"
-                      pagination={false}
-                      dataSource={artifacts}
-                      columns={[
-                        { title: t('table.id'), dataIndex: 'id' },
-                        { title: t('softwareModules.filename'), dataIndex: 'providedFilename' },
-                        { title: t('softwareModules.filesize'), dataIndex: 'size' },
-                        { title: t('softwareModules.hashes'), dataIndex: 'hashes' },
-                      ]}
-                    />
-                  ),
+          <Tooltip title={t('common.edit')}>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingItem(record);
+                form.setFieldsValue({
+                  type: String(record.type ?? ''),
+                  name: record.name,
+                  version: record.version,
+                  vendor: record.vendor,
+                  description: record.description,
+                  encrypted: Boolean(record.encrypted),
                 });
-              } catch (error) {
-                notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
-              }
-            }}
-          >
-            {t('softwareModules.artifacts')}
-          </Button>
+                setEditingOpen(true);
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('softwareModules.artifacts')}>
+            <Button
+              size="small"
+              icon={<FileOutlined />}
+              onClick={async () => {
+                try {
+                  const artifacts = await managementApi.getSoftwareModuleArtifacts(String(record.id));
+                  Modal.info({
+                    width: 900,
+                    title: t('softwareModules.artifacts'),
+                    content: (
+                      <Table<HawkbitEntity>
+                        rowKey={(row) => String(row.id)}
+                        size="small"
+                        pagination={false}
+                        dataSource={artifacts}
+                        columns={[
+                          { title: t('table.id'), dataIndex: 'id' },
+                          { title: t('softwareModules.filename'), dataIndex: 'providedFilename' },
+                          { title: t('softwareModules.filesize'), dataIndex: 'size' },
+                          { title: t('softwareModules.hashes'), dataIndex: 'hashes' },
+                        ]}
+                      />
+                    ),
+                  });
+                } catch (error) {
+                  notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+                }
+              }}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -104,55 +181,83 @@ export const SoftwareModulesPage = () => {
   return (
     <Card title={t('page.softwareModules.title')}>
       <Space direction="vertical" style={{ width: '100%' }}>
-        <Space>
-          <Button onClick={() => void loadData()}>{t('common.refresh')}</Button>
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingItem(null);
-              form.resetFields();
-              setEditingOpen(true);
+        <Space wrap>
+          <Select
+            allowClear
+            placeholder={t('softwareModules.filterType')}
+            style={{ width: 200 }}
+            options={types.map((item) => ({ value: String(item.key ?? item.id), label: String(item.name ?? item.id) }))}
+            onChange={(value) => {
+              setFilterType(value);
+              setPage(1);
             }}
-          >
-            {t('common.create')}
-          </Button>
-          <Upload
-            maxCount={1}
-            showUploadList
-            beforeUpload={async (file) => {
-              if (selectedRows.length !== 1) {
-                notification.warning({ message: t('softwareModules.selectOneFirst') });
+            value={filterType}
+          />
+          <Input.Search
+            allowClear
+            placeholder={t('softwareModules.searchName')}
+            style={{ width: 240 }}
+            onSearch={(value) => {
+              setSearchName(value.trim());
+              setPage(1);
+            }}
+            value={searchName}
+            onChange={(e) => setSearchName(e.target.value)}
+          />
+          <Tooltip title={t('common.refresh')}>
+            <Button icon={<SyncOutlined />} onClick={() => void loadData()} />
+          </Tooltip>
+          <Tooltip title={t('common.create')}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingItem(null);
+                form.resetFields();
+                setEditingOpen(true);
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('common.upload')}>
+            <Upload
+              maxCount={1}
+              showUploadList={false}
+              beforeUpload={async (file) => {
+                if (selectedRows.length !== 1) {
+                  notification.warning({ message: t('softwareModules.selectOneFirst') });
+                  return Upload.LIST_IGNORE;
+                }
+
+                try {
+                  await managementApi.uploadSoftwareModuleArtifact(String(selectedRows[0].id), file);
+                  notification.success({ message: t('common.updated') });
+                } catch (error) {
+                  notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+                }
+
                 return Upload.LIST_IGNORE;
-              }
-
-              try {
-                await managementApi.uploadSoftwareModuleArtifact(String(selectedRows[0].id), file);
-                notification.success({ message: t('common.updated') });
-              } catch (error) {
-                notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
-              }
-
-              return Upload.LIST_IGNORE;
-            }}
-          >
-            <Button disabled={selectedRows.length !== 1}>{t('common.upload')}</Button>
-          </Upload>
-          <Button
-            danger
-            disabled={selectedRowKeys.length === 0}
-            onClick={() => {
-              Modal.confirm({
-                title: t('common.confirmDelete'),
-                onOk: async () => {
-                  await managementApi.deleteSoftwareModules(selectedRowKeys);
-                  notification.success({ message: t('common.deleted') });
-                  await loadData();
-                },
-              });
-            }}
-          >
-            {t('common.delete')}
-          </Button>
+              }}
+            >
+              <Button icon={<UploadOutlined />} disabled={selectedRows.length !== 1} />
+            </Upload>
+          </Tooltip>
+          <Tooltip title={t('common.delete')}>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => {
+                Modal.confirm({
+                  title: t('common.confirmDelete'),
+                  onOk: async () => {
+                    await managementApi.deleteSoftwareModules(selectedRowKeys);
+                    notification.success({ message: t('common.deleted') });
+                    await loadData();
+                  },
+                });
+              }}
+            />
+          </Tooltip>
         </Space>
 
         <Table<HawkbitEntity>
@@ -164,7 +269,18 @@ export const SoftwareModulesPage = () => {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys as Array<string | number>),
           }}
-          pagination={{ pageSize: 20, showSizeChanger: true }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            showTotal: (totalCount) => `Total ${totalCount} items`,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
+          onChange={handleTableChange}
         />
       </Space>
 
@@ -210,8 +326,8 @@ export const SoftwareModulesPage = () => {
           <Form.Item name="description" label={t('common.description')}>
             <Input.TextArea rows={4} />
           </Form.Item>
-          <Form.Item name="encrypted" label={t('softwareModules.encrypted')}>
-            <Select options={[{ value: true, label: t('common.yes') }, { value: false, label: t('common.no') }]} />
+          <Form.Item name="encrypted" label={t('softwareModules.encrypted')} valuePropName="checked">
+            <Checkbox />
           </Form.Item>
         </Form>
       </Modal>

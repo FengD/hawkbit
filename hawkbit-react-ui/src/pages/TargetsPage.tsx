@@ -1,5 +1,33 @@
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tabs, Typography, notification } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import {
+  Button,
+  Card,
+  Descriptions,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  notification,
+} from 'antd';
+import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
+import {
+  AppstoreAddOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  ExclamationCircleOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  PlusOutlined,
+  SyncOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
@@ -9,6 +37,17 @@ import { toErrorMessage } from '../utils/normalize';
 interface MetadataRow {
   key: string;
   value: string;
+}
+
+interface ActionEntry {
+  id: number;
+  status: string;
+  type: string;
+  lastStatus: string;
+  startedAt: number;
+  finishedAt: number;
+  forced: boolean;
+  messages: Array<{ type: string; content: string }>;
 }
 
 export const TargetsPage = () => {
@@ -27,7 +66,7 @@ export const TargetsPage = () => {
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [metadataRows, setMetadataRows] = useState<MetadataRow[]>([]);
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [actionsPayload, setActionsPayload] = useState<unknown>(null);
+  const [actionsPayload, setActionsPayload] = useState<ActionEntry[] | null>(null);
 
   const [form] = Form.useForm();
 
@@ -73,46 +112,174 @@ export const TargetsPage = () => {
 
   const selectedRows = useMemo(() => rows.filter((row) => selectedRowKeys.includes(String(row.id))), [rows, selectedRowKeys]);
 
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    if (pagination.current !== page) {
+      setPage(pagination.current || 1);
+    }
+    if (pagination.pageSize !== pageSize) {
+      setPageSize(pagination.pageSize || 20);
+      setPage(1);
+    }
+  };
+
+  const getSyncStatus = (target: HawkbitEntity) => {
+    const updateStatus = target.updateStatus?.toLowerCase() || '';
+    if (updateStatus === 'in_sync' || updateStatus === 'registered') {
+      return {
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+        text: t('targets.syncInSync'),
+        color: 'green',
+      };
+    } else if (updateStatus === 'pending') {
+      return {
+        icon: <ClockCircleOutlined style={{ color: '#faad14' }} />,
+        text: t('targets.syncPending'),
+        color: 'orange',
+      };
+    } else if (updateStatus === 'error') {
+      return {
+        icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
+        text: t('targets.syncError'),
+        color: 'red',
+      };
+    }
+    return {
+      icon: <ExclamationCircleOutlined style={{ color: '#d9d9d9' }} />,
+      text: t('targets.syncUnknown'),
+      color: 'default',
+    };
+  };
+
+  const formatDateTime = (value: number) => {
+    if (!value) return '-';
+    return dayjs(value).format('YYYY-MM-DD HH:mm:ss');
+  };
+
+  const loadActions = async (targetId: string | number) => {
+    try {
+      const response = await managementApi.getTargetActions(String(targetId));
+      const actions = (response.data?.content || []) as ActionEntry[];
+      setActionsPayload(actions);
+      setActionsOpen(true);
+    } catch (error) {
+      notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+    }
+  };
+
   const columns: ColumnsType<HawkbitEntity> = [
-    { title: t('table.controllerId'), dataIndex: 'controllerId' },
-    { title: t('table.name'), dataIndex: 'name' },
-    { title: t('table.status'), dataIndex: 'updateStatus' },
-    { title: t('table.type'), dataIndex: 'targetTypeName' },
-    { title: t('table.createdAt'), dataIndex: 'createdAt' },
+    { title: t('table.controllerId'), dataIndex: 'controllerId', sorter: true },
+    { title: t('table.name'), dataIndex: 'name', sorter: true },
+    {
+      title: t('table.type'),
+      dataIndex: 'targetTypeName',
+      render: (_, record) => record.targetTypeName || '-',
+    },
+    {
+      title: t('targets.syncStatus'),
+      dataIndex: 'updateStatus',
+      render: (_, record) => {
+        const status = getSyncStatus(record);
+        return (
+          <Tooltip title={status.text}>
+            {status.icon}
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: t('table.status'),
+      dataIndex: 'updateStatus',
+      render: (_, record) => {
+        const status = getSyncStatus(record);
+        return <Tag color={status.color}>{status.text}</Tag>;
+      },
+    },
+    {
+      title: t('targets.installedDs'),
+      render: (_, record) => {
+        const installedDs = record.installedDistributionSet;
+        if (!installedDs) return '-';
+        const name = installedDs.name || installedDs.id || '-';
+        const version = installedDs.version || '';
+        return (
+          <Space direction="vertical" size="small">
+            <span>{name}</span>
+            {version && <span style={{ fontSize: 12, color: '#999' }}>v{version}</span>}
+          </Space>
+        );
+      },
+    },
+    {
+      title: t('targets.assignedDsInfo'),
+      render: (_, record) => {
+        const assignedDs = record.assignedDistributionSet;
+        if (!assignedDs) return '-';
+        const name = assignedDs.name || assignedDs.id || '-';
+        const version = assignedDs.version || '';
+        return (
+          <Space direction="vertical" size="small">
+            <span>{name}</span>
+            {version && <span style={{ fontSize: 12, color: '#999' }}>v{version}</span>}
+          </Space>
+        );
+      },
+    },
+    {
+      title: t('table.createdAt'),
+      dataIndex: 'createdAt',
+      render: (value: number) => formatDateTime(value),
+    },
+    {
+      title: t('table.lastModifiedAt'),
+      dataIndex: 'lastModifiedAt',
+      render: (value: number) => formatDateTime(value),
+    },
     {
       title: t('common.actions'),
       render: (_, record) => (
         <Space>
-          <Button
-            size="small"
-            onClick={() => {
-              setEditingTarget(record);
-              form.setFieldsValue({
-                controllerId: record.controllerId,
-                name: record.name,
-                description: record.description,
-                group: record.group,
-                targetType: record.targetType,
-              });
-              setEditingOpen(true);
-            }}
-          >
-            {t('common.edit')}
-          </Button>
-          <Button
-            size="small"
-            onClick={async () => {
-              try {
-                const response = await managementApi.getTargetActions(String(record.controllerId ?? record.id));
-                setActionsPayload(response.data);
-                setActionsOpen(true);
-              } catch (error) {
-                notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
-              }
-            }}
-          >
-            {t('targets.actionHistory')}
-          </Button>
+          <Tooltip title={t('common.edit')}>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingTarget(record);
+                form.setFieldsValue({
+                  controllerId: record.controllerId,
+                  name: record.name,
+                  description: record.description,
+                  group: record.group,
+                  targetType: record.targetType,
+                });
+                setEditingOpen(true);
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('targets.actionHistory')}>
+            <Button
+              size="small"
+              icon={<HistoryOutlined />}
+              onClick={() => void loadActions(record.controllerId ?? record.id)}
+            />
+          </Tooltip>
+          <Tooltip title={t('targets.metadata')}>
+            <Button
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={async () => {
+                const selected = record;
+                try {
+                  const response = await managementApi.getTargetMetadata(String(selected.controllerId ?? selected.id));
+                  const content = (response.data?.content ?? []) as Array<{ key: string; value: string }>;
+                  setMetadataRows(content);
+                  setEditingTarget(selected);
+                  setMetadataOpen(true);
+                } catch (error) {
+                  notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+                }
+              }}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -121,7 +288,7 @@ export const TargetsPage = () => {
   return (
     <Card title={<Typography.Title level={4}>{t('page.targets.title')}</Typography.Title>}>
       <Space direction="vertical" style={{ width: '100%' }}>
-        <Space>
+        <Space wrap>
           <Input.Search
             allowClear
             placeholder={t('targets.searchHint')}
@@ -131,84 +298,72 @@ export const TargetsPage = () => {
               setQuery(value.trim());
             }}
           />
-          <Button onClick={() => void loadTargets()}>{t('common.refresh')}</Button>
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingTarget(null);
-              form.resetFields();
-              setEditingOpen(true);
-            }}
-          >
-            {t('common.create')}
-          </Button>
-          <Button
-            disabled={selectedRows.length !== 1}
-            onClick={() => {
-              let distributionSetId = '';
-              Modal.confirm({
-                title: t('targets.assignDs'),
-                icon: null,
-                content: (
-                  <Select
-                    showSearch
-                    style={{ width: '100%' }}
-                    placeholder={t('targets.distributionSetId')}
-                    options={distributionSets.map((item) => ({
-                      value: String(item.id),
-                      label: `${String(item.name ?? item.id)}:${String(item.version ?? '')}`,
-                    }))}
-                    onChange={(value) => {
-                      distributionSetId = value;
-                    }}
-                  />
-                ),
-                onOk: async () => {
-                  await managementApi.assignDistributionSet(
-                    String(selectedRows[0].controllerId ?? selectedRows[0].id),
-                    distributionSetId,
-                  );
-                  notification.success({ message: t('common.updated') });
-                  await loadTargets();
-                },
-              });
-            }}
-          >
-            {t('targets.assignDs')}
-          </Button>
-          <Button
-            disabled={selectedRows.length !== 1}
-            onClick={async () => {
-              const selected = selectedRows[0];
-              try {
-                const response = await managementApi.getTargetMetadata(String(selected.controllerId ?? selected.id));
-                const content = (response.data?.content ?? []) as Array<{ key: string; value: string }>;
-                setMetadataRows(content);
-                setEditingTarget(selected);
-                setMetadataOpen(true);
-              } catch (error) {
-                notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
-              }
-            }}
-          >
-            {t('targets.metadata')}
-          </Button>
-          <Button
-            danger
-            disabled={selectedRowKeys.length === 0}
-            onClick={() => {
-              Modal.confirm({
-                title: t('common.confirmDelete'),
-                onOk: async () => {
-                  await managementApi.deleteTargets(selectedRowKeys);
-                  notification.success({ message: t('common.deleted') });
-                  await loadTargets();
-                },
-              });
-            }}
-          >
-            {t('common.delete')}
-          </Button>
+          <Tooltip title={t('common.refresh')}>
+            <Button icon={<SyncOutlined />} onClick={() => void loadTargets()} />
+          </Tooltip>
+          <Tooltip title={t('common.create')}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingTarget(null);
+                form.resetFields();
+                setEditingOpen(true);
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('targets.assignDs')}>
+            <Button
+              icon={<AppstoreAddOutlined />}
+              disabled={selectedRows.length !== 1}
+              onClick={() => {
+                let distributionSetId = '';
+                Modal.confirm({
+                  title: t('targets.assignDs'),
+                  icon: null,
+                  content: (
+                    <Select
+                      showSearch
+                      style={{ width: '100%' }}
+                      placeholder={t('targets.distributionSetId')}
+                      options={distributionSets.map((item) => ({
+                        value: String(item.id),
+                        label: `${String(item.name ?? item.id)}:${String(item.version ?? '')}`,
+                      }))}
+                      onChange={(value) => {
+                        distributionSetId = value;
+                      }}
+                    />
+                  ),
+                  onOk: async () => {
+                    await managementApi.assignDistributionSet(
+                      String(selectedRows[0].controllerId ?? selectedRows[0].id),
+                      distributionSetId,
+                    );
+                    notification.success({ message: t('common.updated') });
+                    await loadTargets();
+                  },
+                });
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('common.delete')}>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => {
+                Modal.confirm({
+                  title: t('common.confirmDelete'),
+                  onOk: async () => {
+                    await managementApi.deleteTargets(selectedRowKeys);
+                    notification.success({ message: t('common.deleted') });
+                    await loadTargets();
+                  },
+                });
+              }}
+            />
+          </Tooltip>
         </Space>
 
         <Table<HawkbitEntity>
@@ -220,16 +375,19 @@ export const TargetsPage = () => {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys as Array<string | number>),
           }}
+          scroll={{ x: 1400 }}
           pagination={{
             current: page,
             pageSize,
             total,
             showSizeChanger: true,
+            showTotal: (totalCount) => `Total ${totalCount} items`,
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPage);
               setPageSize(nextPageSize);
             },
           }}
+          onChange={handleTableChange}
         />
       </Space>
 
@@ -349,15 +507,71 @@ export const TargetsPage = () => {
       </Modal>
 
       <Modal title={t('targets.actionHistory')} open={actionsOpen} onCancel={() => setActionsOpen(false)} footer={null} width={980}>
-        <Tabs
-          items={[
-            {
-              key: 'history',
-              label: t('targets.actionHistory'),
-              children: <pre style={{ maxHeight: 460, overflow: 'auto' }}>{JSON.stringify(actionsPayload, null, 2)}</pre>,
-            },
-          ]}
-        />
+        {!actionsPayload || actionsPayload.length === 0 ? (
+          <Typography.Text type="secondary">{t('targets.noActions')}</Typography.Text>
+        ) : (
+          <Table<ActionEntry>
+            rowKey={(row) => row.id}
+            size="small"
+            pagination={false}
+            dataSource={actionsPayload}
+            columns={[
+              { title: t('targets.actionId'), dataIndex: 'id', width: 80 },
+              {
+                title: t('targets.actionStatus'),
+                dataIndex: 'status',
+                width: 100,
+                render: (status: string) => {
+                  const statusMap: Record<string, { color: string; text: string }> = {
+                    SCHEDULED: { color: 'blue', text: 'Scheduled' },
+                    RUNNING: { color: 'green', text: 'Running' },
+                    FINISHED: { color: 'purple', text: 'Finished' },
+                    ERROR: { color: 'red', text: 'Error' },
+                    CANCELLED: { color: 'orange', text: 'Cancelled' },
+                    DOWNLOADED: { color: 'cyan', text: 'Downloaded' },
+                  };
+                  const info = statusMap[status] || { color: 'default', text: status };
+                  return <Tag color={info.color}>{info.text}</Tag>;
+                },
+              },
+              {
+                title: t('targets.actionType'),
+                dataIndex: 'type',
+                width: 100,
+                render: (type: string) => {
+                  const typeMap: Record<string, string> = {
+                    FORCED: 'Forced',
+                    SOFT: 'Soft',
+                    DOWNLOAD_ONLY: 'Download Only',
+                    TIMEFORCED: 'Time Forced',
+                  };
+                  return typeMap[type] || type;
+                },
+              },
+              {
+                title: t('targets.actionForced'),
+                dataIndex: 'forced',
+                width: 80,
+                render: (forced: boolean) => (forced ? <Tag color="red">Yes</Tag> : <Tag>No</Tag>),
+              },
+              { title: t('targets.actionStartedAt'), dataIndex: 'startedAt', render: formatDateTime, width: 150 },
+              { title: t('targets.actionFinishedAt'), dataIndex: 'finishedAt', render: formatDateTime, width: 150 },
+              {
+                title: t('targets.actionMessages'),
+                dataIndex: 'messages',
+                render: (messages: Array<{ type: string; content: string }>) => (
+                  <Space direction="vertical" size="small">
+                    {messages?.map((msg, idx) => (
+                      <Tag key={idx} color={msg.type === 'error' ? 'red' : 'default'}>
+                        {msg.content}
+                      </Tag>
+                    ))}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        )}
       </Modal>
     </Card>
   );

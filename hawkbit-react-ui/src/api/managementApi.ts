@@ -132,8 +132,12 @@ export const managementApi = {
   createTargetFilter: (payload: Record<string, unknown>) => httpClient.post('/targetfilters', payload),
   updateTargetFilter: (id: string | number, payload: Record<string, unknown>) => httpClient.put(`/targetfilters/${id}`, payload),
   deleteTargetFilters: (ids: Array<string | number>) => Promise.all(ids.map((id) => httpClient.delete(`/targetfilters/${id}`))),
+  assignTargetFilterDistributionSet: (id: string | number, distributionSetId: string | number, actionType = 'FORCED') =>
+    httpClient.post(`/targetfilters/${id}/assignedDistributionSet`, { id: distributionSetId, type: actionType }),
+  cancelTargetFilterDistributionSet: (id: string | number) => httpClient.delete(`/targetfilters/${id}/assignedDistributionSet`),
 
   listRollouts: (query: ListQuery) => list<HawkbitEntity>('/rollouts', { ...query }),
+  getRollout: (id: string | number) => httpClient.get(`/rollouts/${id}`).then((res) => res.data as HawkbitEntity),
   createRollout: (payload: Record<string, unknown>) => httpClient.post('/rollouts', payload),
   updateRollout: (id: string | number, payload: Record<string, unknown>) => httpClient.put(`/rollouts/${id}`, payload),
   deleteRollouts: (ids: Array<string | number>) => Promise.all(ids.map((id) => httpClient.delete(`/rollouts/${id}`))),
@@ -141,6 +145,15 @@ export const managementApi = {
     id: string | number,
     action: 'start' | 'pause' | 'resume' | 'stop' | 'retry' | 'approve' | 'deny' | 'triggerNextGroup',
   ) => httpClient.post(`/rollouts/${id}/${action}`),
+  listRolloutGroups: (id: string | number, query: ListQuery) => {
+    return httpClient.get(`/rollouts/${id}/groups`, {
+      params: {
+        offset: query.offset ?? 0,
+        limit: query.limit ?? 100,
+        sort: query.sort,
+      },
+    }).then((res) => normalizePageResponse<HawkbitEntity>(res.data).items);
+  },
 
   listDistributionSetTypes: async () => {
     const response = await httpClient.get('/distributionsettypes', { params: { offset: 0, limit: 100, sort: 'name:asc' } });

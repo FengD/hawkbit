@@ -1,5 +1,14 @@
-import { Button, Card, Form, Input, Modal, Space, Table, Typography, notification } from 'antd';
+import { Button, Card, Form, Input, Modal, Select, Space, Table, Tooltip, Typography, notification } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import {
+  AppstoreAddOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  MinusCircleOutlined,
+  PlusOutlined,
+  SyncOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
@@ -13,12 +22,15 @@ export const TargetFiltersPage = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string | number>>([]);
   const [editingOpen, setEditingOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HawkbitEntity | null>(null);
+  const [filterName, setFilterName] = useState('');
+  const [distributionSets, setDistributionSets] = useState<HawkbitEntity[]>([]);
   const [form] = Form.useForm();
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const response = await managementApi.listTargetFilters({ offset: 0, limit: 200, sort: 'name:asc' });
+      const q = filterName ? `name=rl=.*${filterName}.*` : undefined;
+      const response = await managementApi.listTargetFilters({ offset: 0, limit: 200, sort: 'name:asc', q });
       setRows(response.items);
       setSelectedRowKeys([]);
     } catch (error) {
@@ -28,28 +40,93 @@ export const TargetFiltersPage = () => {
     }
   };
 
+  const loadDistributionSets = async () => {
+    try {
+      const ds = await managementApi.listDistributionSets({ offset: 0, limit: 200, sort: 'name:asc' });
+      setDistributionSets(ds.items);
+    } catch {
+      // best effort loading
+    }
+  };
+
   useEffect(() => {
     void loadData();
+    void loadDistributionSets();
   }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [filterName]);
+
+  const formatDateTime = (value: number) => {
+    if (!value) return '-';
+    return dayjs(value).format('YYYY-MM-DD HH:mm:ss');
+  };
 
   const columns: ColumnsType<HawkbitEntity> = [
     { title: t('table.id'), dataIndex: 'id' },
     { title: t('table.name'), dataIndex: 'name' },
     { title: t('table.query'), dataIndex: 'query' },
-    { title: t('table.createdAt'), dataIndex: 'createdAt' },
+    {
+      title: t('table.distributionSet'),
+      dataIndex: 'distributionSet',
+      render: (_, record) => {
+        const ds = record.distributionSet;
+        if (!ds) return '-';
+        const name = ds.name || ds.id || '-';
+        const version = ds.version || '';
+        return `${name}:${version}`;
+      },
+    },
+    {
+      title: t('table.createdAt'),
+      dataIndex: 'createdAt',
+      render: (value: number) => formatDateTime(value),
+    },
+    {
+      title: t('table.lastModifiedAt'),
+      dataIndex: 'lastModifiedAt',
+      render: (value: number) => formatDateTime(value),
+    },
     {
       title: t('common.actions'),
       render: (_, record) => (
-        <Button
-          size="small"
-          onClick={() => {
-            setEditingItem(record);
-            form.setFieldsValue({ name: record.name, query: record.query });
-            setEditingOpen(true);
-          }}
-        >
-          {t('common.edit')}
-        </Button>
+        <Space>
+          <Tooltip title={t('common.edit')}>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingItem(record);
+                form.setFieldsValue({ name: record.name, query: record.query });
+                setEditingOpen(true);
+              }}
+            />
+          </Tooltip>
+          {record.distributionSet && (
+            <Tooltip title={t('targetFilters.cancelDs')}>
+              <Button
+                size="small"
+                danger
+                icon={<MinusCircleOutlined />}
+                onClick={async () => {
+                  Modal.confirm({
+                    title: t('targetFilters.confirmCancelDs'),
+                    onOk: async () => {
+                      try {
+                        await managementApi.cancelTargetFilterDistributionSet(String(record.id));
+                        notification.success({ message: t('common.updated') });
+                        await loadData();
+                      } catch (error) {
+                        notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+                      }
+                    },
+                  });
+                }}
+              />
+            </Tooltip>
+          )}
+        </Space>
       ),
     },
   ];
@@ -57,34 +134,85 @@ export const TargetFiltersPage = () => {
   return (
     <Card title={<Typography.Title level={4}>{t('page.targetFilters.title')}</Typography.Title>}>
       <Space direction="vertical" style={{ width: '100%' }}>
-        <Space>
-          <Button onClick={() => void loadData()}>{t('common.refresh')}</Button>
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingItem(null);
-              form.resetFields();
-              setEditingOpen(true);
+        <Space wrap>
+          <Input.Search
+            allowClear
+            placeholder={t('targetFilters.filterName')}
+            style={{ width: 240 }}
+            onSearch={(value) => {
+              setFilterName(value.trim());
             }}
-          >
-            {t('common.create')}
-          </Button>
-          <Button
-            danger
-            disabled={selectedRowKeys.length === 0}
-            onClick={() => {
-              Modal.confirm({
-                title: t('common.confirmDelete'),
-                onOk: async () => {
-                  await managementApi.deleteTargetFilters(selectedRowKeys);
-                  notification.success({ message: t('common.deleted') });
-                  await loadData();
-                },
-              });
-            }}
-          >
-            {t('common.delete')}
-          </Button>
+            defaultValue={filterName}
+          />
+          <Tooltip title={t('common.refresh')}>
+            <Button icon={<SyncOutlined />} onClick={() => void loadData()} />
+          </Tooltip>
+          <Tooltip title={t('common.create')}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingItem(null);
+                form.resetFields();
+                setEditingOpen(true);
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('targetFilters.assignDs')}>
+            <Button
+              icon={<AppstoreAddOutlined />}
+              disabled={selectedRowKeys.length !== 1}
+              onClick={() => {
+                const selectedFilter = rows.find((row) => selectedRowKeys.includes(row.id));
+                let distributionSetId = '';
+                Modal.confirm({
+                  title: t('targetFilters.assignDs'),
+                  icon: null,
+                  content: (
+                    <Select
+                      showSearch
+                      style={{ width: '100%' }}
+                      placeholder={t('targets.distributionSetId')}
+                      options={distributionSets.map((item) => ({
+                        value: String(item.id),
+                        label: `${String(item.name ?? item.id)}:${String(item.version ?? '')}`,
+                      }))}
+                      onChange={(value) => {
+                        distributionSetId = value;
+                      }}
+                    />
+                  ),
+                  onOk: async () => {
+                    if (!distributionSetId || !selectedFilter) return;
+                    try {
+                      await managementApi.assignTargetFilterDistributionSet(String(selectedFilter.id), distributionSetId);
+                      notification.success({ message: t('common.updated') });
+                      await loadData();
+                    } catch (error) {
+                      notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
+                    }
+                  },
+                });
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('common.delete')}>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => {
+                Modal.confirm({
+                  title: t('common.confirmDelete'),
+                  onOk: async () => {
+                    await managementApi.deleteTargetFilters(selectedRowKeys);
+                    notification.success({ message: t('common.deleted') });
+                    await loadData();
+                  },
+                });
+              }}
+            />
+          </Tooltip>
         </Space>
 
         <Table<HawkbitEntity>
