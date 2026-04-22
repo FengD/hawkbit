@@ -1,13 +1,15 @@
-import { Button, Card, Checkbox, Form, Input, Modal, Select, Space, Table, Upload, Tooltip, notification } from 'antd';
+import { Button, Card, Checkbox, Descriptions, Form, Input, Modal, Select, Space, Table, Typography, Upload, Tooltip, notification } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import {
   DeleteOutlined,
   EditOutlined,
   FileOutlined,
+  FileSearchOutlined,
   PlusOutlined,
   SyncOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
@@ -23,6 +25,9 @@ export const SoftwareModulesPage = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string | number>>([]);
   const [editingOpen, setEditingOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HawkbitEntity | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsItem, setDetailsItem] = useState<HawkbitEntity | null>(null);
+  const [detailsArtifacts, setDetailsArtifacts] = useState<HawkbitEntity[]>([]);
   const [filterType, setFilterType] = useState<string | undefined>();
   const [searchName, setSearchName] = useState('');
   const [sortField, setSortField] = useState<string>('name');
@@ -69,6 +74,17 @@ export const SoftwareModulesPage = () => {
   }, [page, pageSize, filterType, searchName, sortOrder, sortField]);
 
   const selectedRows = rows.filter((row) => selectedRowKeys.includes(String(row.id)));
+
+  const showDetails = async (record: HawkbitEntity) => {
+    setDetailsItem(record);
+    setDetailsOpen(true);
+    try {
+      const artifacts = await managementApi.getSoftwareModuleArtifacts(String(record.id));
+      setDetailsArtifacts(artifacts);
+    } catch {
+      setDetailsArtifacts([]);
+    }
+  };
 
   const handleTableChange = (
     pagination: TablePaginationConfig,
@@ -142,36 +158,8 @@ export const SoftwareModulesPage = () => {
               }}
             />
           </Tooltip>
-          <Tooltip title={t('softwareModules.artifacts')}>
-            <Button
-              size="small"
-              icon={<FileOutlined />}
-              onClick={async () => {
-                try {
-                  const artifacts = await managementApi.getSoftwareModuleArtifacts(String(record.id));
-                  Modal.info({
-                    width: 900,
-                    title: t('softwareModules.artifacts'),
-                    content: (
-                      <Table<HawkbitEntity>
-                        rowKey={(row) => String(row.id)}
-                        size="small"
-                        pagination={false}
-                        dataSource={artifacts}
-                        columns={[
-                          { title: t('table.id'), dataIndex: 'id' },
-                          { title: t('softwareModules.filename'), dataIndex: 'providedFilename' },
-                          { title: t('softwareModules.filesize'), dataIndex: 'size' },
-                          { title: t('softwareModules.hashes'), dataIndex: 'hashes' },
-                        ]}
-                      />
-                    ),
-                  });
-                } catch (error) {
-                  notification.error({ message: t('common.failed'), description: toErrorMessage(error) });
-                }
-              }}
-            />
+          <Tooltip title={t('common.details')}>
+            <Button size="small" icon={<FileSearchOutlined />} onClick={() => void showDetails(record)} />
           </Tooltip>
         </Space>
       ),
@@ -330,6 +318,55 @@ export const SoftwareModulesPage = () => {
             <Checkbox />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={t('softwareModules.details')}
+        open={detailsOpen}
+        onCancel={() => setDetailsOpen(false)}
+        footer={null}
+        width={800}
+      >
+        {detailsItem && (
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label={t('table.id')}>{detailsItem.id}</Descriptions.Item>
+              <Descriptions.Item label={t('table.name')}>{detailsItem.name}</Descriptions.Item>
+              <Descriptions.Item label={t('table.version')}>{detailsItem.version}</Descriptions.Item>
+              <Descriptions.Item label={t('table.type')}>{detailsItem.typeName}</Descriptions.Item>
+              <Descriptions.Item label={t('table.vendor')}>{detailsItem.vendor || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('softwareModules.encrypted')}>
+                {detailsItem.encrypted ? t('common.yes') : t('common.no')}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.description')} span={2}>
+                {detailsItem.description || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.createdBy')}>{detailsItem.createdBy || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('table.createdAt')}>
+                {detailsItem.createdAt ? dayjs(detailsItem.createdAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.lastModifiedBy')}>{detailsItem.lastModifiedBy || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('table.lastModifiedAt')}>
+                {detailsItem.lastModifiedAt ? dayjs(detailsItem.lastModifiedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Typography.Title level={5}>{t('softwareModules.artifacts')}</Typography.Title>
+            <Table<HawkbitEntity>
+              rowKey={(row) => String(row.id)}
+              size="small"
+              pagination={false}
+              dataSource={detailsArtifacts}
+              columns={[
+                { title: t('table.id'), dataIndex: 'id' },
+                { title: t('softwareModules.filename'), dataIndex: 'providedFilename' },
+                { title: t('softwareModules.filesize'), dataIndex: 'size' },
+                { title: t('softwareModules.hashes'), dataIndex: 'hashes' },
+              ]}
+              locale={{ emptyText: 'No artifacts' }}
+            />
+          </Space>
+        )}
       </Modal>
     </Card>
   );

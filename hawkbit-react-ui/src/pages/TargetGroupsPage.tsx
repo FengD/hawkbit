@@ -1,5 +1,6 @@
 import { Button, Card, Input, Modal, Space, Table, Tag, Typography, notification } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
@@ -9,6 +10,11 @@ import { toErrorMessage } from '../utils/normalize';
 interface GroupItem {
   name: string;
 }
+
+const formatDateTime = (value: number) => {
+  if (!value) return '-';
+  return dayjs(value).format('YYYY-MM-DD HH:mm:ss');
+};
 
 export const TargetGroupsPage = () => {
   const { t } = useTranslation();
@@ -74,7 +80,7 @@ export const TargetGroupsPage = () => {
       { title: t('table.controllerId'), dataIndex: 'controllerId' },
       { title: t('table.name'), dataIndex: 'name' },
       { title: t('table.status'), dataIndex: 'updateStatus' },
-      { title: t('table.createdAt'), dataIndex: 'createdAt' },
+      { title: t('table.createdAt'), dataIndex: 'createdAt', render: (value: number) => formatDateTime(value) },
     ],
     [t],
   );

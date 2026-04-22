@@ -98,15 +98,35 @@ export const managementApi = {
   },
   createTarget: (payload: Record<string, unknown>) => httpClient.post('/targets', [payload]),
   updateTarget: (id: string | number, payload: Record<string, unknown>) => httpClient.put(`/targets/${id}`, payload),
-  deleteTargets: (ids: Array<string | number>) => Promise.all(ids.map((id) => httpClient.delete(`/targets/${id}`))),
+  deleteTargets: (controllerIds: Array<string | number>) => Promise.all(controllerIds.map((id) => httpClient.delete(`/targets/${id}`))),
   getTargetActions: (id: string | number) => httpClient.get(`/targets/${id}/actions`),
   getTargetMetadata: (id: string | number) => httpClient.get(`/targets/${id}/metadata`),
   createTargetMetadata: (id: string | number, key: string, value: string) =>
     httpClient.post(`/targets/${id}/metadata`, [{ key, value }]),
   deleteTargetMetadata: (id: string | number, key: string) => httpClient.delete(`/targets/${id}/metadata/${key}`),
-  assignDistributionSet: (id: string | number, distributionSetId: string | number, actionType = 'FORCED') =>
+  assignDistributionSet: (id: string | number, distributionSetId: number, actionType = 'forced') =>
     httpClient.post(`/targets/${id}/assignedDS`, { id: distributionSetId, type: actionType }),
-
+  getTargetAction: (targetId: string | number, actionId: string | number) =>
+    httpClient.get(`/targets/${targetId}/actions/${actionId}`),
+  cancelTargetAction: (targetId: string | number, actionId: string | number, force = false) =>
+    httpClient.delete(`/targets/${targetId}/actions/${actionId}`, { params: { force } }),
+  updateTargetAction: (targetId: string | number, actionId: string | number, forceType: string) =>
+    httpClient.put(`/targets/${targetId}/actions/${actionId}`, { forceType }),
+  getTargetActionStatusList: (targetId: string | number, actionId: string | number) =>
+    httpClient.get(`/targets/${targetId}/actions/${actionId}/status`),
+  getTargetAssignedDistributionSet: (id: string | number) => httpClient.get(`/targets/${id}/assignedDS`),
+  getTargetInstalledDistributionSet: (id: string | number) => httpClient.get(`/targets/${id}/installedDS`),
+  getTargetTags: (id: string | number) => httpClient.get(`/targets/${id}/tags`),
+  assignTargetTag: (tagId: string | number, controllerId: string) =>
+    httpClient.post(`/targettags/${tagId}/assigned`, [controllerId]),
+  unassignTargetTag: (tagId: string | number, controllerId: string) =>
+    httpClient.delete(`/targettags/${tagId}/assigned/${controllerId}`),
+  listTargetTags: async () => {
+    const response = await httpClient.get('/targettags', { params: { offset: 0, limit: 200 } });
+    return normalizePageResponse<HawkbitEntity>(response.data).items;
+  },
+  createTargetTag: (payload: Record<string, unknown>) => httpClient.post('/targettags', [payload]),
+  getTargetAttributes: (id: string | number) => httpClient.get(`/targets/${id}/attributes`),
   listTargetGroups: async () => {
     const response = await httpClient.get('/targetgroups');
     return (response.data ?? []) as string[];
@@ -132,7 +152,7 @@ export const managementApi = {
   createTargetFilter: (payload: Record<string, unknown>) => httpClient.post('/targetfilters', payload),
   updateTargetFilter: (id: string | number, payload: Record<string, unknown>) => httpClient.put(`/targetfilters/${id}`, payload),
   deleteTargetFilters: (ids: Array<string | number>) => Promise.all(ids.map((id) => httpClient.delete(`/targetfilters/${id}`))),
-  assignTargetFilterDistributionSet: (id: string | number, distributionSetId: string | number, actionType = 'FORCED') =>
+  assignTargetFilterDistributionSet: (id: string | number, distributionSetId: number, actionType = 'forced') =>
     httpClient.post(`/targetfilters/${id}/assignedDistributionSet`, { id: distributionSetId, type: actionType }),
   cancelTargetFilterDistributionSet: (id: string | number) => httpClient.delete(`/targetfilters/${id}/assignedDistributionSet`),
 

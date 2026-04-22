@@ -185,7 +185,7 @@ export const TargetFiltersPage = () => {
                   onOk: async () => {
                     if (!distributionSetId || !selectedFilter) return;
                     try {
-                      await managementApi.assignTargetFilterDistributionSet(String(selectedFilter.id), distributionSetId);
+                      await managementApi.assignTargetFilterDistributionSet(String(selectedFilter.id), Number(distributionSetId));
                       notification.success({ message: t('common.updated') });
                       await loadData();
                     } catch (error) {

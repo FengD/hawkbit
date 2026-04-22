@@ -20,7 +20,7 @@ export const AppShell = () => {
   const items = useMemo(
     () => [
       { key: '/targets', label: <Link to="/targets">{t('nav.targets')}</Link>, visible: permissions?.targets ?? true },
-      { key: '/target-groups', label: <Link to="/target-groups">{t('nav.targetGroups')}</Link>, visible: permissions?.targets ?? true },
+      // { key: '/target-groups', label: <Link to="/target-groups">{t('nav.targetGroups')}</Link>, visible: permissions?.targets ?? true },
       {
         key: '/target-filters',
         label: <Link to="/target-filters">{t('nav.targetFilters')}</Link>,

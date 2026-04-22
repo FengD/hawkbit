@@ -18,6 +18,7 @@ import {
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import {
   DeleteOutlined,
+  FileSearchOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -50,6 +51,8 @@ export const RolloutsPage = () => {
   const [targetFilters, setTargetFilters] = useState<HawkbitEntity[]>([]);
   const [distributionSets, setDistributionSets] = useState<HawkbitEntity[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsItem, setDetailsItem] = useState<HawkbitEntity | null>(null);
   const [filterName, setFilterName] = useState('');
   const [sortField, setSortField] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -130,6 +133,11 @@ export const RolloutsPage = () => {
 
   const selectedRows = useMemo(() => rows.filter((row) => selectedRowKeys.includes(String(row.id))), [rows, selectedRowKeys]);
 
+  const showDetails = (record: HawkbitEntity) => {
+    setDetailsItem(record);
+    setDetailsOpen(true);
+  };
+
   const handleTableChange = (
     pagination: TablePaginationConfig,
     _filters: Record<string, (string | number)[] | null>,
@@ -164,12 +172,6 @@ export const RolloutsPage = () => {
       dataIndex: 'name',
       sorter: true,
       sortOrder: sortField === 'name' ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null,
-    },
-    {
-      title: t('rollouts.details'),
-      dataIndex: 'description',
-      ellipsis: true,
-      render: (value: string) => value || '-',
     },
     {
       title: t('table.status'),
@@ -225,6 +227,9 @@ export const RolloutsPage = () => {
         const info = getStatusInfo(record.status as string);
         return (
           <Space>
+            <Tooltip title={t('common.details')}>
+              <Button size="small" icon={<FileSearchOutlined />} onClick={() => showDetails(record)} />
+            </Tooltip>
             {info.canStart && (
               <Tooltip title={t('rollouts.actions.start')}>
                 <Button
@@ -357,62 +362,6 @@ export const RolloutsPage = () => {
         </Space>
 
         <Table<HawkbitEntity>
-          expandable={{
-            expandedRowRender: (record) => {
-              const distributionSet = distributionSets.find((ds) => String(ds.id) === String(record.distributionSetId));
-              const targetFilter = targetFilters.find((tf) => String(tf.id) === String(record.targetFilterQuery));
-              return (
-                <div style={{ padding: 16 }}>
-                  <Descriptions
-                    title={t('rollouts.details')}
-                    bordered
-                    column={1}
-                    size="small"
-                    items={[
-                      {
-                        label: t('common.description'),
-                        children: record.description || '-',
-                      },
-                      {
-                        label: t('rollouts.createdBy'),
-                        children: record.createdBy || '-',
-                      },
-                      {
-                        label: t('table.createdAt'),
-                        children: formatDateTime(record.createdAt),
-                      },
-                      {
-                        label: t('rollouts.lastModifiedBy'),
-                        children: record.lastModifiedBy || '-',
-                      },
-                      {
-                        label: t('table.lastModifiedAt'),
-                        children: formatDateTime(record.lastModifiedAt),
-                      },
-                      {
-                        label: t('table.distributionSet'),
-                        children: distributionSet
-                          ? `${distributionSet.name ?? distributionSet.id}:${distributionSet.version ?? ''}`
-                          : '-',
-                      },
-                      {
-                        label: t('rollouts.targetFilter'),
-                        children: record.targetFilterQuery || '-',
-                      },
-                      {
-                        label: t('rollouts.actionType'),
-                        children: getActionTypeLabel(record.actionType as string),
-                      },
-                      {
-                        label: t('rollouts.startAt'),
-                        children: formatDateTime(record.startAt),
-                      },
-                    ]}
-                  />
-                </div>
-              );
-            },
-          }}
           rowKey={(row) => String(row.id)}
           loading={loading}
           columns={columns}
@@ -561,6 +510,55 @@ export const RolloutsPage = () => {
             <Checkbox />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={t('rollouts.details')}
+        open={detailsOpen}
+        onCancel={() => setDetailsOpen(false)}
+        footer={null}
+        width={800}
+      >
+        {detailsItem && (() => {
+          const distributionSet = distributionSets.find((ds) => String(ds.id) === String(detailsItem.distributionSetId));
+          const targetFilter = targetFilters.find((tf) => String(tf.id) === String(detailsItem.targetFilterQuery));
+          return (
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label={t('table.id')}>{detailsItem.id}</Descriptions.Item>
+              <Descriptions.Item label={t('table.name')}>{detailsItem.name}</Descriptions.Item>
+              <Descriptions.Item label={t('table.status')}>
+                <Tag color={getStatusInfo(detailsItem.status as string).color}>
+                  {getStatusInfo(detailsItem.status as string).label}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.groups')}>{detailsItem.totalGroups}</Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.targets')}>{detailsItem.totalTargets}</Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.actionType')}>
+                {getActionTypeLabel(detailsItem.actionType as string)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('common.description')} span={2}>
+                {detailsItem.description || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('table.distributionSet')}>
+                {distributionSet ? `${distributionSet.name ?? distributionSet.id}:${distributionSet.version ?? ''}` : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.targetFilter')}>
+                {targetFilter?.name || detailsItem.targetFilterQuery || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.createdBy')}>{detailsItem.createdBy || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('table.createdAt')}>
+                {formatDateTime(detailsItem.createdAt)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.lastModifiedBy')}>{detailsItem.lastModifiedBy || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('table.lastModifiedAt')}>
+                {formatDateTime(detailsItem.lastModifiedAt)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('rollouts.startAt')}>
+                {formatDateTime(detailsItem.startAt)}
+              </Descriptions.Item>
+            </Descriptions>
+          );
+        })()}
       </Modal>
     </Card>
   );
