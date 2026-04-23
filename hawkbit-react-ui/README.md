@@ -98,6 +98,27 @@ npm run build
 npm run preview
 ```
 
+## Docker
+
+### Docker Compose
+
+Start React UI development server:
+
+```bash
+docker compose up
+```
+
+Access the UI at `http://localhost:5173`.
+
+To link with hawkBit management server, uncomment the `hawkbit` service in `docker-compose.yml`.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_HAWKBIT_SERVER_URL` | `http://hawkbit:8080` | hawkBit management server URL |
+| `VITE_DEFAULT_LOCALE` | `en` | Default language (en/zh) |
+
 ## Lint
 
 ```bash

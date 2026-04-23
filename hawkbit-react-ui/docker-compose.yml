@@ -1,0 +1,39 @@
+#
+# Copyright (c) 2018 Bosch Software Innovations GmbH and others
+#
+# This program and the accompanying materials are made
+# available under the terms of the Eclipse Public License 2.0
+# which is available at https://www.eclipse.org/legal/epl-2.0/
+#
+# SPDX-License-Identifier: EPL-2.0
+#
+version: '3.8'
+
+services:
+
+  hawkbit-react-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # hawkBit 管理服务器 URL（使用 host.docker.internal 访问宿主机服务）
+      - VITE_HAWKBIT_SERVER_URL=${VITE_HAWKBIT_SERVER_URL:-http://host.docker.internal:8080}
+      - VITE_DEFAULT_LOCALE=${VITE_DEFAULT_LOCALE:-en}
+    # Linux 需要此配置支持 host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+    ports:
+      - "5173:5173"
+    labels:
+      NAME: "hawkbit-react-ui"
+
+  # 可选：HawkBit 管理服务器
+  # 取消注释以同时启动后端服务
+  # hawkbit:
+  #   image: "hawkbit/hawkbit-update-server:latest"
+  #   restart: always
+  #   ports:
+  #     - "8080:8080"
+  #   labels:
+  #     NAME: "hawkbit-update-server"
