@@ -104,8 +104,17 @@ export const managementApi = {
   createTargetMetadata: (id: string | number, key: string, value: string) =>
     httpClient.post(`/targets/${id}/metadata`, [{ key, value }]),
   deleteTargetMetadata: (id: string | number, key: string) => httpClient.delete(`/targets/${id}/metadata/${key}`),
-  assignDistributionSet: (id: string | number, distributionSetId: number, actionType = 'forced') =>
-    httpClient.post(`/targets/${id}/assignedDS`, { id: distributionSetId, type: actionType }),
+  assignDistributionSet: (
+    id: string | number,
+    distributionSetId: number,
+    actionType = 'forced',
+    forcetime?: number,
+  ) =>
+    httpClient.post(`/targets/${id}/assignedDS`, {
+      id: distributionSetId,
+      type: actionType,
+      ...(typeof forcetime === 'number' ? { forcetime } : {}),
+    }),
   getTargetAction: (targetId: string | number, actionId: string | number) =>
     httpClient.get(`/targets/${targetId}/actions/${actionId}`),
   cancelTargetAction: (targetId: string | number, actionId: string | number, force = false) =>

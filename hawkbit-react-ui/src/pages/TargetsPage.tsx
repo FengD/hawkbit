@@ -558,7 +558,12 @@ export const TargetsPage = () => {
               await managementApi.assignDistributionSet(
                 String(assignDsTarget.controllerId ?? assignDsTarget.id),
                 Number(values.distributionSetId),
-                values.actionType || 'forced'
+                values.actionType || 'forced',
+                values.actionType === 'timeforced'
+                  ? values.forcetime
+                    ? dayjs(values.forcetime).valueOf()
+                    : Date.now()
+                  : undefined
               );
               notification.success({ message: t('common.updated') });
               setAssignDsOpen(false);
@@ -590,6 +595,15 @@ export const TargetsPage = () => {
                 { value: 'timeforced', label: 'Time Forced' },
               ]}
             />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.actionType !== curr.actionType}>
+            {({ getFieldValue }) =>
+              getFieldValue('actionType') === 'timeforced' ? (
+                <Form.Item name="forcetime" label={t('rollouts.forceTime')}>
+                  <Input type="datetime-local" />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>
