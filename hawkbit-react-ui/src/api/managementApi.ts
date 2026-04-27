@@ -90,6 +90,22 @@ export const managementApi = {
     const response = await httpClient.get('/targettypes', { params: { offset: 0, limit: 100, sort: 'name:asc' } });
     return normalizePageResponse<HawkbitEntity>(response.data).items;
   },
+  getTargetType: async (id: string | number) => {
+    const response = await httpClient.get(`/targettypes/${id}`);
+    return response.data as HawkbitEntity;
+  },
+  createTargetType: (payload: Record<string, unknown>) => httpClient.post('/targettypes', [payload]),
+  updateTargetType: (id: string | number, payload: Record<string, unknown>) => httpClient.put(`/targettypes/${id}`, payload),
+  deleteTargetType: (id: string | number) => httpClient.delete(`/targettypes/${id}`),
+  getCompatibleDistributionSetTypes: async (targetTypeId: string | number) => {
+    const response = await httpClient.get(`/targettypes/${targetTypeId}/compatibledistributionsettypes`);
+    return (response.data ?? []) as HawkbitEntity[];
+  },
+  addCompatibleDistributionSetTypes: (targetTypeId: string | number, distributionSetTypeIds: Array<string | number>) =>
+    httpClient.post(`/targettypes/${targetTypeId}/compatibledistributionsettypes`,
+      distributionSetTypeIds.map(id => ({ id: Number(id) }))),
+  removeCompatibleDistributionSetType: (targetTypeId: string | number, distributionSetTypeId: string | number) =>
+    httpClient.delete(`/targettypes/${targetTypeId}/compatibledistributionsettypes/${distributionSetTypeId}`),
 
   listTargets: (query: ListQuery) => list<HawkbitEntity>('/targets', query),
   getTarget: async (id: string | number) => {
@@ -104,8 +120,13 @@ export const managementApi = {
   createTargetMetadata: (id: string | number, key: string, value: string) =>
     httpClient.post(`/targets/${id}/metadata`, [{ key, value }]),
   deleteTargetMetadata: (id: string | number, key: string) => httpClient.delete(`/targets/${id}/metadata/${key}`),
-  assignDistributionSet: (id: string | number, distributionSetId: number, actionType = 'forced') =>
-    httpClient.post(`/targets/${id}/assignedDS`, { id: distributionSetId, type: actionType }),
+  assignDistributionSet: (id: string | number, distributionSetId: number, actionType = 'forced', forcetime?: number) => {
+    const payload: Record<string, unknown> = { id: distributionSetId, type: actionType };
+    if (actionType === 'timeforced' && forcetime) {
+      payload.forcetime = forcetime;
+    }
+    return httpClient.post(`/targets/${id}/assignedDS`, payload);
+  },
   getTargetAction: (targetId: string | number, actionId: string | number) =>
     httpClient.get(`/targets/${targetId}/actions/${actionId}`),
   cancelTargetAction: (targetId: string | number, actionId: string | number, force = false) =>

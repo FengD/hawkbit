@@ -1,10 +1,11 @@
 import { Button, Card, Checkbox, Input, Space, Table, Tooltip, Typography, notification } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
 import { toErrorMessage } from '../utils/normalize';
+import { TargetTypesModal } from '../components/shared/TargetTypesModal';
 
 interface ConfigRow {
   key: string;
@@ -22,6 +23,7 @@ export const ConfigPage = () => {
   const [rows, setRows] = useState<ConfigRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [dirty, setDirty] = useState<Record<string, string>>({});
+  const [targetTypesModalOpen, setTargetTypesModalOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -103,6 +105,11 @@ export const ConfigPage = () => {
               }}
             />
           </Tooltip>
+          <Tooltip title={t('targetTypes.manageTargetTypes')}>
+            <Button icon={<SettingOutlined />} onClick={() => setTargetTypesModalOpen(true)}>
+              {t('targetTypes.manageTargetTypes')}
+            </Button>
+          </Tooltip>
         </Space>
 
         <Table
@@ -113,6 +120,8 @@ export const ConfigPage = () => {
           pagination={{ pageSize: 25, showSizeChanger: true }}
         />
       </Space>
+
+      <TargetTypesModal open={targetTypesModalOpen} onClose={() => setTargetTypesModalOpen(false)} />
     </Card>
   );
 };

@@ -1,6 +1,7 @@
 import {
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Form,
   Input,
@@ -31,6 +32,7 @@ import {
   QuestionCircleOutlined,
   UserOutlined,
   DownloadOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
@@ -38,6 +40,8 @@ import { useTranslation } from 'react-i18next';
 import { managementApi } from '../api/managementApi';
 import type { HawkbitEntity } from '../types/api';
 import { toErrorMessage } from '../utils/normalize';
+import { WebTerminal } from '../components/shared/WebTerminal';
+import { env } from '../config/env';
 
 const formatDateTime = (value: number) => {
   if (!value) return '-';
@@ -97,6 +101,8 @@ export const TargetsPage = () => {
   const [assignDsOpen, setAssignDsOpen] = useState(false);
   const [assignDsTarget, setAssignDsTarget] = useState<HawkbitEntity | null>(null);
   const [assignDsForm] = Form.useForm();
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalTarget, setTerminalTarget] = useState<HawkbitEntity | null>(null);
 
   const [form] = Form.useForm();
 
@@ -371,6 +377,18 @@ export const TargetsPage = () => {
               }}
             />
           </Tooltip>
+          {env.mqttEnabled && (
+            <Tooltip title={t('terminal.openTerminal')}>
+              <Button
+                size="small"
+                icon={<CodeOutlined />}
+                onClick={() => {
+                  setTerminalTarget(record);
+                  setTerminalOpen(true);
+                }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title={t('common.edit')}>
             <Button
               size="small"
@@ -555,10 +573,16 @@ export const TargetsPage = () => {
           void assignDsForm.validateFields().then(async (values) => {
             if (!assignDsTarget) return;
             try {
+              let forcetime: number | undefined;
+              if (values.actionType === 'timeforced' && values.forceTime) {
+                // Convert to UTC timestamp in milliseconds
+                forcetime = values.forceTime.valueOf();
+              }
               await managementApi.assignDistributionSet(
                 String(assignDsTarget.controllerId ?? assignDsTarget.id),
                 Number(values.distributionSetId),
-                values.actionType || 'forced'
+                values.actionType || 'forced',
+                forcetime
               );
               notification.success({ message: t('common.updated') });
               setAssignDsOpen(false);
@@ -589,10 +613,49 @@ export const TargetsPage = () => {
                 { value: 'downloadonly', label: 'Download Only' },
                 { value: 'timeforced', label: 'Time Forced' },
               ]}
+              onChange={() => {
+                // Clear forceTime when actionType changes
+                assignDsForm.setFieldValue('forceTime', undefined);
+              }}
             />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.actionType !== currentValues.actionType}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('actionType') === 'timeforced' ? (
+                <Form.Item
+                  name="forceTime"
+                  label={t('targets.forceTime')}
+                  rules={[{ required: true, message: t('targets.forceTimeRequired') }]}
+                >
+                  <DatePicker
+                    showTime
+                    format="YYYY-MM-DD HH:mm:ss"
+                    style={{ width: '100%' }}
+                    disabledDate={(current) => current && current < dayjs().startOf('day')}
+                  />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>
+
+      {terminalTarget && terminalOpen && (
+        <WebTerminal
+          open={terminalOpen}
+          onClose={() => {
+            setTerminalOpen(false);
+            setTerminalTarget(null);
+          }}
+          target={{
+            controllerId: String(terminalTarget.controllerId ?? terminalTarget.id),
+            name: String(terminalTarget.name ?? terminalTarget.controllerId ?? terminalTarget.id),
+          }}
+        />
+      )}
     </Card>
   );
 };
