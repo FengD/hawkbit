@@ -29,6 +29,11 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
   const [fullscreen, setFullscreen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const initializedRef = useRef(false);
+  const cleanupRef = useRef(false);
+  
+  // 使用ref存储连接状态，避免闭包问题
+  const mqttConnectedRef = useRef(false);
+  const deviceConnectedRef = useRef(false);
 
   useEffect(() => {
     console.log('[WebTerminal] useEffect triggered', {
@@ -36,7 +41,8 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
       mqttEnabled: env.mqttEnabled,
       mqttUrl: env.mqttUrl,
       controllerId: target.controllerId,
-      initialized: initializedRef.current
+      initialized: initializedRef.current,
+      cleanup: cleanupRef.current
     });
     
     if (!open || !env.mqttEnabled) {
@@ -44,12 +50,15 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
       return;
     }
 
-    // 防止重复初始化
+    // 防止重复初始化（包括React StrictMode的重复执行）
     if (initializedRef.current) {
       console.log('[WebTerminal] Already initialized, skipping');
       return;
     }
+    
+    // 标记为已初始化
     initializedRef.current = true;
+    cleanupRef.current = false;
 
     const initTerminal = async () => {
       console.log('[WebTerminal] initTerminal called, terminalRef.current:', terminalRef.current);
@@ -98,8 +107,8 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
 
         // Handle terminal input
         terminal.onData((data: string) => {
-          console.log('[WebTerminal] Terminal input:', data);
-          if (mqttConnected && deviceConnected) {
+          console.log('[WebTerminal] Terminal input:', data, 'mqttConnected:', mqttConnectedRef.current, 'deviceConnected:', deviceConnectedRef.current);
+          if (mqttConnectedRef.current && deviceConnectedRef.current) {
             mqttService.sendInput(target.controllerId, data);
           } else {
             console.log('[WebTerminal] Cannot send input, not connected to device');
@@ -109,7 +118,7 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
         // Handle terminal resize
         terminal.onResize(({ cols, rows }: { cols: number; rows: number }) => {
           console.log('[WebTerminal] Terminal resize:', { cols, rows });
-          if (mqttConnected && deviceConnected) {
+          if (mqttConnectedRef.current && deviceConnectedRef.current) {
             mqttService.sendResize(target.controllerId, cols, rows);
           }
         });
@@ -119,9 +128,10 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
         console.log('[WebTerminal] Connecting to MQTT with clientId:', clientId);
         await mqttService.connect({ clientId });
         setMqttConnected(true);
+        mqttConnectedRef.current = true; // 更新ref
         console.log('[WebTerminal] MQTT connected');
 
-        // Subscribe to terminal output
+        // Subscribe to terminal output BEFORE sending any messages
         mqttService.subscribeToTerminal(target.controllerId, (message: TerminalMessage) => {
           console.log('[WebTerminal] Received message:', message);
           
@@ -129,10 +139,12 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
             terminal.write(message.data);
           } else if (message.type === 'connected') {
             setDeviceConnected(true);
+            deviceConnectedRef.current = true; // 更新ref
             terminal.writeln('\r\n\x1b[32m✓ Connected to device terminal\x1b[0m\r\n');
             console.log('[WebTerminal] Device connected');
           } else if (message.type === 'disconnected') {
             setDeviceConnected(false);
+            deviceConnectedRef.current = false; // 更新ref
             terminal.writeln('\r\n\x1b[31m✗ Disconnected from device\x1b[0m\r\n');
             console.log('[WebTerminal] Device disconnected');
           } else if (message.type === 'error') {
@@ -142,12 +154,21 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
           }
         });
 
-        // Send initial resize
+        // Send initial resize AFTER subscribing
         const { cols, rows } = terminal;
         console.log('[WebTerminal] Sending initial resize:', { cols, rows });
         mqttService.sendResize(target.controllerId, cols, rows);
 
         terminal.writeln('\r\n\x1b[36mConnecting to device terminal...\x1b[0m\r\n');
+        
+        // 如果设备已经连接（设备端在Web端连接前就已经启动），发送一个ping消息
+        // 设备端收到ping后会回复connected消息
+        setTimeout(() => {
+          if (!deviceConnectedRef.current && mqttConnectedRef.current) {
+            console.log('[WebTerminal] Device not connected yet, sending ping...');
+            mqttService.sendInput(target.controllerId, '\x05'); // ENQ character
+          }
+        }, 1000);
 
       } catch (err) {
         console.error('Failed to initialize terminal:', err);
@@ -162,8 +183,10 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
 
     return () => {
       console.log('[WebTerminal] Cleanup triggered');
-      cleanup();
-      initializedRef.current = false;
+      if (!cleanupRef.current) {
+        cleanupRef.current = true;
+        cleanup();
+      }
     };
   }, [open, target.controllerId, t]);
 
@@ -181,7 +204,10 @@ export const WebTerminal = ({ open, onClose, target }: WebTerminalProps) => {
     }
     setMqttConnected(false);
     setDeviceConnected(false);
+    mqttConnectedRef.current = false; // 重置ref
+    deviceConnectedRef.current = false; // 重置ref
     setError(null);
+    // 不要重置initializedRef，防止React StrictMode的重复执行
   };
 
   const handleDisconnect = async () => {

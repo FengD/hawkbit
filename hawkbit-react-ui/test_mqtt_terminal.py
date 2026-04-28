@@ -31,6 +31,10 @@ class TerminalDevice:
         self.slave_fd = None
         self.shell_process = None
         
+        # 连接状态
+        self.web_client_connected = False
+        self.connected_message_sent = False
+        
         # MQTT主题
         self.input_topic = f'hawkbit/terminal/{controller_id}/input'
         self.output_topic = f'hawkbit/terminal/{controller_id}/output'
@@ -56,8 +60,7 @@ class TerminalDevice:
             # 启动shell
             self.start_shell()
             
-            # 发送连接成功消息
-            self.send_connected()
+            # 不要在这里发送connected消息，等待Web端连接后再发送
             
         else:
             print(f'✗ 连接失败，错误代码: {rc}')
@@ -68,6 +71,13 @@ class TerminalDevice:
             topic = msg.topic
             payload = msg.payload.decode('utf-8')
             
+            # 检测到Web端连接（收到任何消息）
+            if not self.web_client_connected:
+                self.web_client_connected = True
+                print('[检测到] Web端已连接')
+                # 发送connected消息
+                self.send_connected()
+            
             # 尝试解析JSON
             try:
                 message = json.loads(payload)
@@ -75,7 +85,12 @@ class TerminalDevice:
                 
                 if message_type == 'input':
                     data = message.get('data', '')
-                    self.handle_input(data)
+                    # 处理ping消息（ENQ字符）
+                    if data == '\x05':
+                        print('[收到] Ping消息，回复connected')
+                        self.send_connected()
+                    else:
+                        self.handle_input(data)
                     
                 elif message_type == 'resize':
                     cols = message.get('cols', 80)
@@ -164,13 +179,15 @@ class TerminalDevice:
             
     def send_connected(self):
         """发送连接成功消息"""
-        message = {
-            'type': 'connected',
-            'data': 'Device connected'
-        }
-        self.client.publish(self.output_topic, json.dumps(message))
-        print('[发送] 连接成功消息')
-        
+        if not self.connected_message_sent:
+            message = {
+                'type': 'connected',
+                'data': 'Device connected'
+            }
+            self.client.publish(self.output_topic, json.dumps(message))
+            self.connected_message_sent = True
+            print('[发送] 连接成功消息')
+            
     def send_disconnected(self):
         """发送断开连接消息"""
         message = {
